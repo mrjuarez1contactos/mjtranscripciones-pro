@@ -1,10 +1,7 @@
-/// <reference types="vite/client" />
-
-// Fix: Add explicit type definitions for import.meta.env to fix TypeScript errors in src/App.tsx
-interface ImportMetaEnv {
-    readonly VITE_API_KEY: string;
-}
-
-interface ImportMeta {
-    readonly env: ImportMetaEnv;
-}
+// Fix: Removed Vite-specific type references which were causing errors.
+// Added a declaration for process.env.API_KEY to align with coding guidelines and provide types for TypeScript.
+declare var process: {
+  env: {
+    readonly API_KEY: string;
+  };
+};

@@ -78,7 +78,8 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const base64Audio = await fileToBase64(file);
             const audioPart = {
                 inlineData: {
@@ -89,7 +90,7 @@ const App: React.FC = () => {
             
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: { parts: [audioPart, {text: "Transcribe this audio recording."}] },
+                contents: [{ parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
             
             setTranscription(response.text);
@@ -113,7 +114,8 @@ const App: React.FC = () => {
         setGeneralSummary('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
             
             Transcripción:
@@ -148,7 +150,8 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
                 : '';
@@ -192,7 +195,8 @@ const App: React.FC = () => {
         setStatus('Aplicando mejoras al resumen de negocio...');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+            // Fix: API key must be retrieved from process.env.API_KEY as per coding guidelines.
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const instruction = improvementInstruction || 'la instrucción fue grabada por audio.';
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Adicionalmente, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
@@ -230,7 +234,7 @@ const App: React.FC = () => {
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-pro',
-                contents: { parts: promptParts },
+                contents: [{ parts: promptParts }],
             });
             
             setBusinessSummary(response.text);
