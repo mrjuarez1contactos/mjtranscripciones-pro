@@ -80,7 +80,6 @@ const App: React.FC = () => {
 
         try {
             // === ARREGLO DE SINTAXIS 1 (API Key) ===
-            // La API Key se pasa como un string directo
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             
             const base64Audio = await fileToBase64(file);
@@ -92,19 +91,17 @@ const App: React.FC = () => {
             };
             
             // === ARREGLO DE SINTAXIS 2 (Llamada al modelo) ===
-            // 1. Se obtiene el modelo
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
             
-            // 2. Se genera el contenido
+            // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
-                contents: [{ parts: [audioPart, {text: "Transcribe this audio recording."}] }],
+                // Faltaba el 'role: "user"' aquí
+                contents: [{ role: "user", parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
 
-            // 3. Se obtiene la respuesta
             const response = result.response;
             
             // === ARREGLO DE SINTAXIS 3 (response.text) ===
-            // 'response.text' es una función: response.text()
             setTranscription(response.text() ?? "");
             setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
         } catch (error) {
@@ -139,7 +136,7 @@ const App: React.FC = () => {
 
             // === ARREGLO DE SINTAXIS 2 ===
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
-            const result = await model.generateContent(prompt); // El prompt es un string simple
+            const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
             const response = result.response;
 
             // === ARREGLO DE SINTAXIS 3 ===
@@ -182,7 +179,7 @@ const App: React.FC = () => {
 
             // === ARREGLO DE SINTAXIS 2 ===
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
-            const result = await model.generateContent(prompt);
+            const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
             const response = result.response;
 
             // === ARREGLO DE SINTAXIS 3 ===
@@ -249,8 +246,11 @@ const App: React.FC = () => {
 
             // === ARREGLO DE SINTAXIS 2 ===
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            
+            // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
-                contents: [{ parts: promptParts }],
+                // Faltaba el 'role: "user"' aquí
+                contents: [{ role: "user", parts: promptParts }],
             });
             const response = result.response;
             
@@ -392,7 +392,7 @@ ${businessSummary}
         modalButton: { padding: '10px', marginLeft: '10px' },
         instructionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', color: '#1c1e21' },
         deleteButton: { backgroundColor: '#fa3e3e', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' },
-        filenameDisplay: { fontWeight: 'bold', marginBottom: '1rem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
+        filenameDisplay: { fontWeight: 'bold', marginBottom: '1Rrem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
     };
 
     return (
