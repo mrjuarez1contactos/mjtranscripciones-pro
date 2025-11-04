@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-// Se usa el paquete oficial y correcto
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// === ARREGLO DE TIPOS DE SEGURIDAD ===
+// Importa los 'Enums' de tipos correctos
+import { 
+    GoogleGenerativeAI, 
+    HarmCategory, 
+    HarmBlockThreshold 
+} from "@google/generative-ai";
 
 // Helper function to convert a file to a base64 string
 const fileToBase64 = (file: File | Blob): Promise<string> => {
@@ -17,24 +22,24 @@ const fileToBase64 = (file: File | Blob): Promise<string> => {
     });
 };
 
-// === ARREGLO DE SEGURIDAD (PROHIBITED_CONTENT) ===
-// Define la configuración de seguridad para desactivar los filtros.
+// === ARREGLO DE TIPOS DE SEGURIDAD ===
+// Define la configuración de seguridad usando los Enums importados
 const safetySettings = [
     {
-      category: 'HARM_CATEGORY_HATE_SPEECH',
-      threshold: 'BLOCK_NONE',
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
     },
     {
-      category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-      threshold: 'BLOCK_NONE',
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
     },
     {
-      category: 'HARM_CATEGORY_HARASSMENT',
-      threshold: 'BLOCK_NONE',
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
     },
     {
-      category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-      threshold: 'BLOCK_NONE',
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_NONE,
     },
 ];
 
@@ -100,7 +105,6 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // === ARREGLO DE SINTAXIS 1 (API Key) ===
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             
             const base64Audio = await fileToBase64(file);
@@ -111,18 +115,15 @@ const App: React.FC = () => {
                 },
             };
             
-            // === ARREGLO DE SINTAXIS 2 (Llamada al modelo) ===
-            // Se añade la configuración de seguridad
+            // Se añade la configuración de seguridad (ya con los tipos correctos)
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash', safetySettings });
             
-            // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
                 contents: [{ role: "user", parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
 
             const response = result.response;
             
-            // === ARREGLO DE SINTAXIS 3 (response.text) ===
             setTranscription(response.text() ?? "");
             setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
         } catch (error) {
@@ -145,7 +146,6 @@ const App: React.FC = () => {
         setGeneralSummary('');
 
         try {
-            // === ARREGLO DE SINTAXIS 1 ===
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
             
@@ -155,13 +155,11 @@ const App: React.FC = () => {
             ---
             `;
 
-            // === ARREGLO DE SINTAXIS 2 ===
-            // Se añade la configuración de seguridad
+            // Se añade la configuración de seguridad (ya con los tipos correctos)
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
-            const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
+            const result = await model.generateContent(prompt); 
             const response = result.response;
 
-            // === ARREGLO DE SINTAXIS 3 ===
             setGeneralSummary(response.text() ?? "");
             setStatus('Resumen general generado. Ahora puedes generar el resumen de negocio.');
         } catch (error) {
@@ -183,7 +181,6 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // === ARREGLO DE SINTAXIS 1 ===
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
@@ -199,13 +196,11 @@ const App: React.FC = () => {
             ---
             `;
 
-            // === ARREGLO DE SINTAXIS 2 ===
-            // Se añade la configuración de seguridad
+            // Se añade la configuración de seguridad (ya con los tipos correctos)
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
-            const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
+            const result = await model.generateContent(prompt);
             const response = result.response;
 
-            // === ARREGLO DE SINTAXIS 3 ===
             setBusinessSummary(response.text() ?? "");
             setStatus('Resumen de negocio generado. Puedes mejorarlo a continuación.');
         } catch (error) {
@@ -230,7 +225,6 @@ const App: React.FC = () => {
         setStatus('Aplicando mejoras al resumen de negocio...');
 
         try {
-            // === ARREGLO DE SINTAXIS 1 ===
             const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const instruction = improvementInstruction || 'la instrucción fue grabada por audio.';
             const permanentInstructionsText = globalInstructions.length > 0
@@ -267,18 +261,14 @@ const App: React.FC = () => {
                 });
             }
 
-            // === ARREGLO DE SINTAXIS 2 ===
-            // Se añade la configuración de seguridad
+            // Se añade la configuración de seguridad (ya con los tipos correctos)
             const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
             
-            // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
-                // Faltaba el 'role: "user"' aquí
                 contents: [{ role: "user", parts: promptParts }],
             });
             const response = result.response;
             
-            // === ARREGLO DE SINTAXIS 3 ===
             setBusinessSummary(response.text() ?? "");
             setStatus('Resumen de negocio mejorado exitosamente.');
 
