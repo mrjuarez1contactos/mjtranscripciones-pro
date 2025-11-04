@@ -1,11 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-// IMPORTANTE: Esta importación puede ser la raíz de otros problemas.
-// La documentación oficial usa: import { GoogleGenerativeAI } from "@google/generative-ai";
-// Pero por ahora, solo arreglaremos los errores de despliegue.
-// === ¡ARREGLO DE ERROR DE PAQUETE! ===
-// Se cambió "@google/genai" por "@google/generative-ai" y se usó un alias.
-import { GoogleGenerativeAI as GoogleGenAI } from "@google/generative-ai";
-
+// Se usa el paquete oficial y correcto
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Helper function to convert a file to a base64 string
 const fileToBase64 = (file: File | Blob): Promise<string> => {
@@ -84,9 +79,10 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // === ARREGLO 1 DE 8 (API KEY) ===
-            // Cambiado de process.env.API_KEY a import.meta.env.VITE_GEMINI_API_KEY
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+            // === ARREGLO DE SINTAXIS 1 (API Key) ===
+            // La API Key se pasa como un string directo
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+            
             const base64Audio = await fileToBase64(file);
             const audioPart = {
                 inlineData: {
@@ -95,19 +91,25 @@ const App: React.FC = () => {
                 },
             };
             
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+            // === ARREGLO DE SINTAXIS 2 (Llamada al modelo) ===
+            // 1. Se obtiene el modelo
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            
+            // 2. Se genera el contenido
+            const result = await model.generateContent({
                 contents: [{ parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
+
+            // 3. Se obtiene la respuesta
+            const response = result.response;
             
-            // === ARREGLO 2 DE 8 (undefined) ===
-            // Añadido ?? "" para manejar respuestas vacías
-            setTranscription(response.text ?? "");
+            // === ARREGLO DE SINTAXIS 3 (response.text) ===
+            // 'response.text' es una función: response.text()
+            setTranscription(response.text() ?? "");
             setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
         } catch (error) {
             console.error('Transcription error:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-            // Mostramos el error real en el status para más claridad
             setStatus(`Error en la transcripción: ${errorMessage}`);
         } finally {
             setIsLoading(false);
@@ -125,8 +127,8 @@ const App: React.FC = () => {
         setGeneralSummary('');
 
         try {
-            // === ARREGLO 3 DE 8 (API KEY) ===
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+            // === ARREGLO DE SINTAXIS 1 ===
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
             
             Transcripción:
@@ -135,13 +137,13 @@ const App: React.FC = () => {
             ---
             `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: prompt,
-            });
+            // === ARREGLO DE SINTAXIS 2 ===
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            const result = await model.generateContent(prompt); // El prompt es un string simple
+            const response = result.response;
 
-            // === ARREGLO 4 DE 8 (undefined) ===
-            setGeneralSummary(response.text ?? "");
+            // === ARREGLO DE SINTAXIS 3 ===
+            setGeneralSummary(response.text() ?? "");
             setStatus('Resumen general generado. Ahora puedes generar el resumen de negocio.');
         } catch (error) {
             console.error('General summary generation error:', error);
@@ -162,8 +164,8 @@ const App: React.FC = () => {
         setBusinessSummary('');
 
         try {
-            // === ARREGLO 5 DE 8 (API KEY) ===
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+            // === ARREGLO DE SINTAXIS 1 ===
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
                 : '';
@@ -178,13 +180,13 @@ const App: React.FC = () => {
             ---
             `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: prompt,
-            });
+            // === ARREGLO DE SINTAXIS 2 ===
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            const result = await model.generateContent(prompt);
+            const response = result.response;
 
-            // === ARREGLO 6 DE 8 (undefined) ===
-            setBusinessSummary(response.text ?? "");
+            // === ARREGLO DE SINTAXIS 3 ===
+            setBusinessSummary(response.text() ?? "");
             setStatus('Resumen de negocio generado. Puedes mejorarlo a continuación.');
         } catch (error) {
             console.error('Business summary generation error:', error);
@@ -208,8 +210,8 @@ const App: React.FC = () => {
         setStatus('Aplicando mejoras al resumen de negocio...');
 
         try {
-            // === ARREGLO 7 DE 8 (API KEY) ===
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+            // === ARREGLO DE SINTAXIS 1 ===
+            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
             const instruction = improvementInstruction || 'la instrucción fue grabada por audio.';
             const permanentInstructionsText = globalInstructions.length > 0
                 ? `Adicionalmente, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
@@ -245,13 +247,15 @@ const App: React.FC = () => {
                 });
             }
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
+            // === ARREGLO DE SINTAXIS 2 ===
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            const result = await model.generateContent({
                 contents: [{ parts: promptParts }],
             });
+            const response = result.response;
             
-            // === ARREGLO 8 DE 8 (undefined) ===
-            setBusinessSummary(response.text ?? "");
+            // === ARREGLO DE SINTAXIS 3 ===
+            setBusinessSummary(response.text() ?? "");
             setStatus('Resumen de negocio mejorado exitosamente.');
 
             if (isPermanent && improvementInstruction) {
@@ -343,8 +347,7 @@ ${businessSummary}
 
     const handleExportInstructions = () => {
         if (globalInstructions.length === 0) {
-            // Reemplazamos alert() por setStatus
-            setStatus("No hay mejoras permanentes para exportar.");
+            alert("No hay mejoras permanentes para exportar.");
             return;
         }
         const content = globalInstructions.join('\n');
@@ -368,8 +371,7 @@ ${businessSummary}
             const text = e.target?.result as string;
             const lines = text.split('\n').filter(line => line.trim() !== '');
             saveGlobalInstructions(lines);
-            // Reemplazamos alert() por setStatus
-            setStatus(`${lines.length} mejoras importadas correctamente.`);
+            alert(`${lines.length} mejoras importadas correctamente.`);
         };
         reader.readAsText(file);
         event.target.value = ''; // Reset input
@@ -451,9 +453,7 @@ ${businessSummary}
                                 style={{...styles.textarea, minHeight: '80px'}}
                                 placeholder="Ej: 'El cliente se llama Juan Pérez, no Juan Ramírez' o 'Enfócate más en el precio del pulpo'"
                                 value={improvementInstruction}
-                                // === ¡ARREGLO DE ERROR 'e.g'! ===
-                                // Se corrigió 'e.g.target.value' a 'e.target.value'
-                                onChange={(e) => setImprovementInstruction(e.target.value)}
+                                onChange={(e) => setImprovementInstruction(e.target.value)} 
                             />
                             <button onClick={toggleRecording} style={{...styles.button, backgroundColor: isRecording ? '#fa3e3e' : '#42b72a'}}>
                                 {isRecording ? 'Detener Grabación' : 'Grabar Instrucciones'}
@@ -462,7 +462,7 @@ ${businessSummary}
                                 <button onClick={() => handleImproveSummary(false)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
                                     Aplicar Mejora Temporal
                                 </button>
-                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1rem', backgroundColor: '#36a420'}}>
+                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1am', backgroundColor: '#36a420'}}>
                                     Aplicar y Guardar Mejora
                                 </button>
                             </div>
