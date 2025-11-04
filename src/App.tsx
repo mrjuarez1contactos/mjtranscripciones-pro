@@ -17,6 +17,27 @@ const fileToBase64 = (file: File | Blob): Promise<string> => {
     });
 };
 
+// === ARREGLO DE SEGURIDAD (PROHIBITED_CONTENT) ===
+// Define la configuración de seguridad para desactivar los filtros.
+const safetySettings = [
+    {
+      category: 'HARM_CATEGORY_HATE_SPEECH',
+      threshold: 'BLOCK_NONE',
+    },
+    {
+      category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+      threshold: 'BLOCK_NONE',
+    },
+    {
+      category: 'HARM_CATEGORY_HARASSMENT',
+      threshold: 'BLOCK_NONE',
+    },
+    {
+      category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+      threshold: 'BLOCK_NONE',
+    },
+];
+
 const App: React.FC = () => {
     const [file, setFile] = useState<File | null>(null);
     const [transcription, setTranscription] = useState<string>('');
@@ -91,11 +112,11 @@ const App: React.FC = () => {
             };
             
             // === ARREGLO DE SINTAXIS 2 (Llamada al modelo) ===
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            // Se añade la configuración de seguridad
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash', safetySettings });
             
             // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
-                // Faltaba el 'role: "user"' aquí
                 contents: [{ role: "user", parts: [audioPart, {text: "Transcribe this audio recording."}] }],
             });
 
@@ -135,7 +156,8 @@ const App: React.FC = () => {
             `;
 
             // === ARREGLO DE SINTAXIS 2 ===
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            // Se añade la configuración de seguridad
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
             const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
             const response = result.response;
 
@@ -178,7 +200,8 @@ const App: React.FC = () => {
             `;
 
             // === ARREGLO DE SINTAXIS 2 ===
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            // Se añade la configuración de seguridad
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
             const result = await model.generateContent(prompt); // El prompt es un string simple, esto está bien
             const response = result.response;
 
@@ -245,7 +268,8 @@ const App: React.FC = () => {
             }
 
             // === ARREGLO DE SINTAXIS 2 ===
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
+            // Se añade la configuración de seguridad
+            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
             
             // === ARREGLO FINAL (Añadir 'role: "user"') ===
             const result = await model.generateContent({
