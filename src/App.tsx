@@ -390,7 +390,7 @@ ${businessSummary}
         modalButton: { padding: '10px', marginLeft: '10px' },
         instructionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', color: '#1c1e21' },
         deleteButton: { backgroundColor: '#fa3e3e', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' },
-        filenameDisplay: { fontWeight: 'bold', marginBottom: '1am', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
+        filenameDisplay: { fontWeight: 'bold', marginBottom: '1rem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
     };
 
     return (
@@ -451,7 +451,9 @@ ${businessSummary}
                                 style={{...styles.textarea, minHeight: '80px'}}
                                 placeholder="Ej: 'El cliente se llama Juan Pérez, no Juan Ramírez' o 'Enfócate más en el precio del pulpo'"
                                 value={improvementInstruction}
-                                onChange={(e) => setImprovementInstruction(e.g.target.value)}
+                                // === ¡ARREGLO DE ERROR 'e.g'! ===
+                                // Se corrigió 'e.g.target.value' a 'e.target.value'
+                                onChange={(e) => setImprovementInstruction(e.target.value)}
                             />
                             <button onClick={toggleRecording} style={{...styles.button, backgroundColor: isRecording ? '#fa3e3e' : '#42b72a'}}>
                                 {isRecording ? 'Detener Grabación' : 'Grabar Instrucciones'}
@@ -460,7 +462,7 @@ ${businessSummary}
                                 <button onClick={() => handleImproveSummary(false)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
                                     Aplicar Mejora Temporal
                                 </button>
-                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1am', backgroundColor: '#36a420'}}>
+                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1rem', backgroundColor: '#36a420'}}>
                                     Aplicar y Guardar Mejora
                                 </button>
                             </div>
