@@ -1,70 +1,32 @@
 import React, { useState, useRef, useEffect } from 'react';
-// === ARREGLO DE TIPOS DE SEGURIDAD ===
-// Importa los 'Enums' de tipos correctos
-import { 
-    GoogleGenerativeAI, 
-    HarmCategory, 
-    HarmBlockThreshold 
-} from "@google/generative-ai";
+import JSZip from 'jszip'; // <-- ¡NUEVA IMPORTACIÓN!
 
-// Helper function to convert a file to a base64 string
-const fileToBase64 = (file: File | Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            // result is a data URL like "data:audio/mp3;base64,..."
-            // We only want the base64 part
-            const result = reader.result as string;
-            resolve(result.split(',')[1]);
-        };
-        reader.onerror = (error) => reject(error);
-    });
-};
+// --- DEFINICIÓN DE ESTADO (COLA) ---
+type FileStatus = 'pending' | 'processing' | 'completed' | 'error';
 
-// === ARREGLO DE TIPOS DE SEGURIDAD ===
-// Define la configuración de seguridad usando los Enums importados
-const safetySettings = [
-    {
-      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-];
+interface FileQueueItem {
+  id: string; 
+  file: File;
+  status: FileStatus;
+  transcription: string;
+  generalSummary: string;
+  businessSummary: string;
+  errorMessage?: string; 
+}
+// --- ================================== ---
 
 const App: React.FC = () => {
-    const [file, setFile] = useState<File | null>(null);
-    const [transcription, setTranscription] = useState<string>('');
-    const [generalSummary, setGeneralSummary] = useState<string>('');
-    const [businessSummary, setBusinessSummary] = useState<string>('');
-    const [status, setStatus] = useState<string>('Por favor, selecciona un archivo de audio y presiona "Transcribir".');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-
-    // State for summary improvements
-    const [improvementInstruction, setImprovementInstruction] = useState('');
-    const [isRecording, setIsRecording] = useState(false);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-    const audioInstructionBlobRef = useRef<Blob | null>(null);
+    
+    const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
+    const [status, setStatus] = useState<string>('Por favor, selecciona uno o más archivos de audio.');
+    const [isLoading, setIsLoading] = useState<boolean>(false); // Para el "Procesar Todo"
 
     // State for permanent instructions
     const [globalInstructions, setGlobalInstructions] = useState<string[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newInstruction, setNewInstruction] = useState('');
     const importFileInputRef = useRef<HTMLInputElement>(null);
-
-
+    
     useEffect(() => {
         try {
             const storedInstructions = localStorage.getItem('globalInstructions');
@@ -82,275 +44,143 @@ const App: React.FC = () => {
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = event.target.files?.[0];
-        if (selectedFile) {
-            setFile(selectedFile);
-            setTranscription('');
-            setGeneralSummary('');
-            setBusinessSummary('');
-            setStatus(`Archivo seleccionado: ${selectedFile.name}`);
-        }
-    };
+        const selectedFiles = event.target.files;
+        if (!selectedFiles) return;
 
-    const handleTranscribe = async () => {
-        if (!file) {
-            setStatus('Por favor, selecciona un archivo primero.');
-            return;
-        }
-
-        setIsLoading(true);
-        setStatus(`Transcribiendo ${file.name}...`);
-        setTranscription('');
-        setGeneralSummary('');
-        setBusinessSummary('');
-
-        try {
-            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            
-            const base64Audio = await fileToBase64(file);
-            const audioPart = {
-                inlineData: {
-                    data: base64Audio,
-                    mimeType: file.type,
-                },
+        const newFiles: FileQueueItem[] = [];
+        for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            const newFileItem: FileQueueItem = {
+                id: `${file.name}-${new Date().getTime()}`, 
+                file: file,
+                status: 'pending',
+                transcription: '',
+                generalSummary: '',
+                businessSummary: '',
             };
-            
-            // Se añade la configuración de seguridad (ya con los tipos correctos)
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash', safetySettings });
-            
-            const result = await model.generateContent({
-                contents: [{ role: "user", parts: [audioPart, {text: "Transcribe this audio recording."}] }],
+            newFiles.push(newFileItem);
+        }
+        
+        setFileQueue(prevQueue => [...prevQueue, ...newFiles]);
+        setStatus(`${selectedFiles.length} archivo(s) añadido(s) a la cola.`);
+    };
+
+    // --- LÓGICA DE PROCESO ---
+
+    const updateFileInQueue = (itemId: string, updates: Partial<FileQueueItem>) => {
+        setFileQueue(currentQueue => 
+            currentQueue.map(item => 
+                item.id === itemId ? { ...item, ...updates } : item
+            )
+        );
+    };
+
+    const processSingleFile = async (itemId: string) => {
+        const item = fileQueue.find(i => i.id === itemId);
+
+        if (!item || item.status !== 'pending') {
+            return;
+        }
+
+        setStatus(`Procesando: ${item.file.name}...`);
+        updateFileInQueue(itemId, { status: 'processing', errorMessage: '' });
+
+        try {
+            const transcription = await runTranscription(item);
+            updateFileInQueue(itemId, { transcription: transcription });
+            setStatus(`Transcrito: ${item.file.name}. Generando resúmenes...`);
+
+            const generalSummary = await runGeneralSummary(transcription);
+            updateFileInQueue(itemId, { generalSummary: generalSummary });
+
+            const businessSummary = await runBusinessSummary(transcription, globalInstructions);
+            updateFileInQueue(itemId, { 
+                businessSummary: businessSummary, 
+                status: 'completed' 
             });
-
-            const response = result.response;
             
-            setTranscription(response.text() ?? "");
-            setStatus('Transcripción completa. Ahora puedes generar un resumen general.');
+            setStatus(`Completado: ${item.file.name}`);
+
         } catch (error) {
-            console.error('Transcription error:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            setStatus(`Error en la transcripción: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleGenerateGeneralSummary = async () => {
-        if (!transcription) {
-            setStatus('No hay transcripción para resumir.');
-            return;
-        }
-
-        setIsLoading(true);
-        setStatus('Generando resumen general...');
-        setGeneralSummary('');
-
-        try {
-            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
-            
-            Transcripción:
-            ---
-            ${transcription}
-            ---
-            `;
-
-            // Se añade la configuración de seguridad (ya con los tipos correctos)
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
-            const result = await model.generateContent(prompt); 
-            const response = result.response;
-
-            setGeneralSummary(response.text() ?? "");
-            setStatus('Resumen general generado. Ahora puedes generar el resumen de negocio.');
-        } catch (error) {
-            console.error('General summary generation error:', error);
-            setStatus(`Error generando el resumen general: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleGenerateBusinessSummary = async () => {
-        if (!transcription) {
-            setStatus('No hay transcripción para resumir.');
-            return;
-        }
-
-        setIsLoading(true);
-        setStatus('Generando resumen de negocio...');
-        setBusinessSummary('');
-
-        try {
-            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const permanentInstructionsText = globalInstructions.length > 0
-                ? `Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
-                : '';
-
-            const prompt = `Basado en la siguiente transcripción de una llamada, genera un resumen de negocio claro y conciso. El resumen debe identificar los puntos clave y las acciones a seguir, enfocándose en temas relevantes para un negocio de mariscos.
-            
-            ${permanentInstructionsText}
-
-            Transcripción:
-            ---
-            ${transcription}
-            ---
-            `;
-
-            // Se añade la configuración de seguridad (ya con los tipos correctos)
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
-            const result = await model.generateContent(prompt);
-            const response = result.response;
-
-            setBusinessSummary(response.text() ?? "");
-            setStatus('Resumen de negocio generado. Puedes mejorarlo a continuación.');
-        } catch (error) {
-            console.error('Business summary generation error:', error);
-            setStatus(`Error generando el resumen de negocio: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleImproveSummary = async (isPermanent: boolean) => {
-        if (!businessSummary) {
-            setStatus('Primero debes generar un resumen de negocio para poder mejorarlo.');
-            return;
-        }
-        if (!improvementInstruction && !audioInstructionBlobRef.current) {
-            setStatus('Por favor, escribe o graba una instrucción para la mejora.');
-            return;
-        }
-
-        setIsLoading(true);
-        setStatus('Aplicando mejoras al resumen de negocio...');
-
-        try {
-            const ai = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const instruction = improvementInstruction || 'la instrucción fue grabada por audio.';
-            const permanentInstructionsText = globalInstructions.length > 0
-                ? `Adicionalmente, aplica estas reglas e instrucciones permanentes en todo momento: ${globalInstructions.join('. ')}`
-                : '';
-
-            const promptParts: any[] = [{ text: `
-                Necesito que mejores el siguiente "Resumen de Negocio Actual" basándote en la "Transcripción Original" y la "Instrucción de Mejora" que te proporciono. 
-                
-                ${permanentInstructionsText}
-
-                Instrucción de Mejora: "${instruction}"
-
-                Transcripción Original:
-                ---
-                ${transcription}
-                ---
-
-                Resumen de Negocio Actual:
-                ---
-                ${businessSummary}
-                ---
-
-                Por favor, genera el "Nuevo Resumen de Negocio Mejorado":
-            `}];
-
-            if (audioInstructionBlobRef.current) {
-                const base64Audio = await fileToBase64(audioInstructionBlobRef.current);
-                promptParts.push({
-                    inlineData: {
-                        data: base64Audio,
-                        mimeType: audioInstructionBlobRef.current.type,
-                    }
-                });
-            }
-
-            // Se añade la configuración de seguridad (ya con los tipos correctos)
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-pro', safetySettings });
-            
-            const result = await model.generateContent({
-                contents: [{ role: "user", parts: promptParts }],
+            const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+            console.error(`Error procesando ${item.file.name}:`, error);
+            updateFileInQueue(itemId, { 
+                status: 'error', 
+                errorMessage: errorMessage 
             });
-            const response = result.response;
-            
-            setBusinessSummary(response.text() ?? "");
-            setStatus('Resumen de negocio mejorado exitosamente.');
-
-            if (isPermanent && improvementInstruction) {
-                if (!globalInstructions.includes(improvementInstruction)) {
-                    saveGlobalInstructions([...globalInstructions, improvementInstruction]);
-                }
-            }
-            setImprovementInstruction('');
-            audioInstructionBlobRef.current = null;
-        } catch (error) {
-            console.error('Improvement error:', error);
-            setStatus(`Error mejorando el resumen: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        } finally {
-            setIsLoading(false);
+            setStatus(`Error en ${item.file.name}: ${errorMessage}`);
         }
     };
 
-    const toggleRecording = async () => {
-        if (isRecording) {
-            mediaRecorderRef.current?.stop();
-            setIsRecording(false);
-            setStatus('Grabación finalizada. Presiona "Aplicar" para usarla.');
-        } else {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorderRef.current = new MediaRecorder(stream);
-                audioChunksRef.current = [];
-                mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
-                mediaRecorderRef.current.onstop = () => {
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                    audioInstructionBlobRef.current = audioBlob;
-                    stream.getTracks().forEach(track => track.stop());
-                };
-                mediaRecorderRef.current.start();
-                setIsRecording(true);
-                setStatus('Grabando instrucciones de audio... Presiona de nuevo para parar.');
-            } catch (error) {
-                console.error("Error accessing microphone:", error);
-                setStatus("No se pudo acceder al micrófono. Por favor, verifica los permisos.");
-            }
-        }
-    };
+    const handleProcessAll = async () => {
+        const pendingFiles = fileQueue.filter(item => item.status === 'pending');
 
-    const handleGenerateDocument = () => {
-        if (!file || !transcription || !generalSummary || !businessSummary) {
-            setStatus("Faltan datos para generar el documento.");
+        if (pendingFiles.length === 0) {
+            setStatus("No hay archivos pendientes para procesar.");
             return;
         }
+        
+        setIsLoading(true); 
+        setStatus(`Iniciando procesamiento por lotes de ${pendingFiles.length} archivos...`);
+
+        for (const item of pendingFiles) {
+            await processSingleFile(item.id);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+
+        setIsLoading(false); 
+        setStatus("Procesamiento por lotes finalizado.");
+    };
     
-        const docContent = `
+    // --- LÓGICA DE DESCARGA ---
+
+    /**
+     * Genera el contenido de texto para un solo archivo.
+     */
+    const generateDocumentContent = (item: FileQueueItem): string => {
+        return `
 =========================================
 REGISTRO DE LLAMADA
 =========================================
 
-Archivo Original: ${file.name}
+Archivo Original: ${item.file.name}
 Fecha de Procesamiento: ${new Date().toLocaleString()}
 
 -----------------------------------------
 1. TRANSCRIPCIÓN COMPLETA
 -----------------------------------------
 
-${transcription}
+${item.transcription}
 
 -----------------------------------------
 2. RESUMEN GENERAL DE LA LLAMADA
 -----------------------------------------
 
-${generalSummary}
+${item.generalSummary}
 
 -----------------------------------------
 3. RESUMEN DE NEGOCIO (PARA NOTAS RÁPIDAS)
 -----------------------------------------
 
-${businessSummary}
-        `;
+${item.businessSummary}
+        `.trim(); 
+    };
+
+    /**
+     * Descarga un solo archivo .txt
+     */
+    const handleGenerateDocument = (item: FileQueueItem) => {
+        if (!item || item.status !== 'completed') {
+            setStatus("Este archivo no está completado.");
+            return;
+        }
     
-        const blob = new Blob([docContent.trim()], { type: 'text/plain;charset=utf-8' });
+        const docContent = generateDocumentContent(item);
+        const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        const baseFilename = file.name.split('.').slice(0, -1).join('.') || file.name;
+        const baseFilename = item.file.name.split('.').slice(0, -1).join('.') || item.file.name;
         link.download = `${baseFilename}.txt`;
         document.body.appendChild(link);
         link.click();
@@ -358,6 +188,47 @@ ${businessSummary}
         URL.revokeObjectURL(url);
         setStatus("Documento generado y descargado.");
     };
+
+    // --- LÓGICA DE DESCARGA ZIP ---
+    const handleDownloadZip = async () => {
+        const completedFiles = fileQueue.filter(item => item.status === 'completed');
+        if (completedFiles.length === 0) {
+            setStatus("No hay archivos completados para descargar.");
+            return;
+        }
+
+        setStatus("Generando archivo .zip...");
+        setIsLoading(true);
+
+        const zip = new JSZip();
+
+        for (const item of completedFiles) {
+            const content = generateDocumentContent(item);
+            const baseFilename = item.file.name.split('.').slice(0, -1).join('.') || item.file.name;
+            const filename = `${baseFilename}.txt`;
+            
+            zip.file(filename, content);
+        }
+
+        try {
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(zipBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `MJTranscripciones_Lote_${new Date().getTime()}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            setStatus(`${completedFiles.length} archivos descargados en .zip.`);
+        } catch (error) {
+            console.error("Error generando el .zip:", error);
+            setStatus("Error al generar el archivo .zip.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
 
     const handleExportInstructions = () => {
         if (globalInstructions.length === 0) {
@@ -379,7 +250,6 @@ ${businessSummary}
     const handleImportInstructions = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (e) => {
             const text = e.target?.result as string;
@@ -391,13 +261,15 @@ ${businessSummary}
         event.target.value = ''; // Reset input
     };
     
-    // Styles
+    // --- ESTILOS ---
     const styles: { [key: string]: React.CSSProperties } = {
         container: { fontFamily: 'sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh', padding: '2rem' },
         header: { textAlign: 'center', marginBottom: '1rem', color: '#1c1e21' },
         card: { backgroundColor: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', marginBottom: '1.5rem' },
         button: { backgroundColor: '#1877f2', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '6px', fontSize: '16px', cursor: 'pointer', margin: '0.5rem 0', display: 'inline-block', transition: 'background-color 0.3s' },
         buttonDisabled: { backgroundColor: '#a0bdf5', cursor: 'not-allowed' },
+        buttonGreen: { backgroundColor: '#36a420' }, 
+        buttonSmall: { padding: '8px 12px', fontSize: '14px', marginRight: '0.5rem' }, 
         textarea: { width: '100%', minHeight: '150px', padding: '10px', borderRadius: '6px', border: '1px solid #dddfe2', fontSize: '14px', boxSizing: 'border-box', marginTop: '1rem' },
         status: { textAlign: 'center', margin: '1.5rem 0', color: isLoading ? '#1877f2' : '#606770', fontWeight: 'bold' },
         modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
@@ -406,8 +278,39 @@ ${businessSummary}
         modalButton: { padding: '10px', marginLeft: '10px' },
         instructionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee', color: '#1c1e21' },
         deleteButton: { backgroundColor: '#fa3e3e', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' },
-        filenameDisplay: { fontWeight: 'bold', marginBottom: '1Rrem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' }
+        filenameDisplay: { fontWeight: 'bold', marginBottom: '1Rrem', color: '#606770', padding: '8px 12px', backgroundColor: '#f0f2f5', borderRadius: '6px', border: '1px solid #dddfe2' },
+        
+        queueContainer: { maxHeight: '400px', overflowY: 'auto', border: '1px solid #dddfe2', borderRadius: '6px', padding: '1rem' },
+        queueItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', borderBottom: '1px solid #eee' },
+        queueItemName: { flexGrow: 1, marginRight: '1rem', color: '#1c1e21' },
+        queueItemStatus: { 
+            fontWeight: 'bold', 
+            minWidth: '100px', 
+            textAlign: 'right',
+            marginRight: '1rem',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+        },
+        statusPending: { color: '#606770', backgroundColor: '#f0f2f5' },
+        statusProcessing: { color: '#1877f2', backgroundColor: '#e7f3ff' },
+        statusCompleted: { color: '#36a420', backgroundColor: '#e6f7e2' },
+        statusError: { color: '#fa3e3e', backgroundColor: '#fde7e7' },
+        errorText: { fontSize: '12px', color: '#fa3e3e', marginTop: '4px' },
     };
+
+    // Helper para obtener el estilo del estado
+    const getStatusStyle = (status: FileStatus): React.CSSProperties => {
+        switch (status) {
+            case 'processing': return styles.statusProcessing;
+            case 'completed': return styles.statusCompleted;
+            case 'error': return styles.statusError;
+            case 'pending':
+            default:
+                return styles.statusPending;
+        }
+    };
+
 
     return (
         <div style={styles.container}>
@@ -418,79 +321,83 @@ ${businessSummary}
                 </div>
 
                 <div style={styles.card}>
-                    <h2>1. Sube tu archivo de audio</h2>
-                    <input type="file" accept="audio/*" onChange={handleFileChange} style={{marginTop: '1rem'}} />
-                    <button onClick={handleTranscribe} disabled={!file || isLoading} style={{...styles.button, ...( !file || isLoading ? styles.buttonDisabled : {}), display: 'block' }}>
-                        {isLoading && status.startsWith('Transcribiendo') ? 'Transcribiendo...' : 'Transcribir'}
-                    </button>
+                    <h2>1. Sube tus archivos de audio</h2>
+                    <input 
+                        type="file" 
+                        accept="audio/*" 
+                        onChange={handleFileChange} 
+                        style={{marginTop: '1rem'}} 
+                        multiple={true} 
+                    />
                 </div>
                 
                 <p style={styles.status}>{status}</p>
 
-                {transcription && (
+                {fileQueue.length > 0 && (
                     <div style={styles.card}>
-                        <h2>2. Transcripción</h2>
-                        <textarea style={styles.textarea} value={transcription} readOnly />
-                        {!generalSummary && (
-                            <button onClick={handleGenerateGeneralSummary} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
-                                {isLoading && status.startsWith('Generando resumen general') ? 'Generando...' : 'Generar Resumen General'}
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                            <h2>2. Cola de Procesamiento ({fileQueue.length} archivos)</h2>
+                            <button 
+                                onClick={handleProcessAll} 
+                                disabled={isLoading}
+                                style={{...styles.button, ...styles.buttonGreen, ...(isLoading ? styles.buttonDisabled : {})}}
+                            >
+                                {isLoading ? 'Procesando...' : `Procesar Todos (${fileQueue.filter(f => f.status === 'pending').length})`}
                             </button>
-                        )}
-                    </div>
-                )}
-
-                {generalSummary && (
-                    <div style={styles.card}>
-                        <h2>3. Resumen General</h2>
-                        <textarea style={styles.textarea} value={generalSummary} readOnly />
-                        {!businessSummary && (
-                             <button onClick={handleGenerateBusinessSummary} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
-                                {isLoading && status.startsWith('Generando resumen de negocio') ? 'Generando...' : 'Generar Resumen de Negocio'}
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {businessSummary && (
-                    <div style={styles.card}>
-                        <h2>4. Resumen de Negocio</h2>
-                        {file && <p style={styles.filenameDisplay}>Archivo: {file.name}</p>}
-                        <textarea 
-                            style={styles.textarea} 
-                            value={businessSummary}
-                            onChange={(e) => setBusinessSummary(e.target.value)}
-                        />
-                        <div style={{marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem'}}>
-                            <h3>Mejorar Resumen de Negocio</h3>
-                            <p>Proporciona una instrucción para refinar el resumen anterior.</p>
-                            <textarea
-                                style={{...styles.textarea, minHeight: '80px'}}
-                                placeholder="Ej: 'El cliente se llama Juan Pérez, no Juan Ramírez' o 'Enfócate más en el precio del pulpo'"
-                                value={improvementInstruction}
-                                onChange={(e) => setImprovementInstruction(e.target.value)} 
-                            />
-                            <button onClick={toggleRecording} style={{...styles.button, backgroundColor: isRecording ? '#fa3e3e' : '#42b72a'}}>
-                                {isRecording ? 'Detener Grabación' : 'Grabar Instrucciones'}
-                            </button>
-                            <div style={{marginTop: '1rem'}}>
-                                <button onClick={() => handleImproveSummary(false)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {})}}>
-                                    Aplicar Mejora Temporal
-                                </button>
-                                <button onClick={() => handleImproveSummary(true)} disabled={isLoading} style={{...styles.button, ...(isLoading ? styles.buttonDisabled : {}), marginLeft: '1am', backgroundColor: '#36a420'}}>
-                                    Aplicar y Guardar Mejora
+                        </div>
+                        <div style={styles.queueContainer}>
+                            {fileQueue.map((item) => (
+                                <div key={item.id}>
+                                    <div style={styles.queueItem}>
+                                        <span style={styles.queueItemName}>{item.file.name}</span>
+                                        <span style={{...styles.queueItemStatus, ...getStatusStyle(item.status)}}>
+                                            {item.status === 'error' ? 'Error' : item.status === 'completed' ? 'Completado' : item.status === 'processing' ? 'Procesando...' : 'Pendiente'}
+                                        </span>
+                                        <div>
+                                            <button 
+                                                onClick={() => processSingleFile(item.id)}
+                                                disabled={isLoading || item.status === 'processing' || item.status === 'completed'}
+                                                style={{...styles.button, ...styles.buttonSmall, ...((isLoading || item.status === 'processing' || item.status === 'completed') ? styles.buttonDisabled : {})}}
+                                            >
+                                                Procesar
+                                            </button>
+                                            <button 
+                                                onClick={() => handleGenerateDocument(item)}
+                                                disabled={item.status !== 'completed'}
+                                                style={{...styles.button, ...styles.buttonSmall, ...styles.buttonGreen, ...(item.status !== 'completed' ? styles.buttonDisabled : {})}}
+                                            >
+                                                Descargar
+                                            </button>
+                                            <button 
+                                                onClick={() => setFileQueue(q => q.filter(i => i.id !== item.id))}
+                                                disabled={isLoading || item.status === 'processing'}
+                                                style={{...styles.button, ...styles.buttonSmall, backgroundColor: '#fa3e3e', ...((isLoading || item.status === 'processing') ? styles.buttonDisabled : {})}}
+                                            >
+                                                Quitar
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {item.status === 'error' && item.errorMessage && (
+                                        <div style={{...styles.queueItem, borderTop: '1px dashed #fde7e7'}}>
+                                            <span style={styles.errorText}><strong>Error:</strong> {item.errorMessage}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        {fileQueue.some(item => item.status === 'completed') && (
+                            <div style={{marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem'}}>
+                                <h2>3. Exportar Lote</h2>
+                                <p>Descarga todos los resúmenes completados en un solo archivo .zip.</p>
+                                <button 
+                                    onClick={handleDownloadZip}
+                                    style={{...styles.button, ...styles.buttonGreen}}
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? 'Generando Zip...' : 'Descargar Todo (.zip)'}
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {businessSummary && (
-                    <div style={styles.card}>
-                        <h2>5. Exportar</h2>
-                        <p>Genera un archivo .txt con la transcripción y ambos resúmenes.</p>
-                        <button onClick={handleGenerateDocument} style={styles.button}>
-                            Generar Documento
-                        </button>
+                        )}
                     </div>
                 )}
 
@@ -546,7 +453,7 @@ ${businessSummary}
                                 {globalInstructions.length === 0 && <p>No hay instrucciones guardadas.</p>}
                                 {globalInstructions.map((inst, index) => (
                                     <div key={index} style={styles.instructionItem}>
-                                        <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span>
+                                        <span style={{flex: 1, marginRight: '1rem'}}>{inst}</span> 
                                         <button 
                                             onClick={() => {
                                                 const updated = globalInstructions.filter((_, i) => i !== index);
@@ -568,5 +475,68 @@ ${businessSummary}
     );
 };
 
-export default App;
+// --- ================================== ---
+// ---   FUNCIONES HELPER DEL BACKEND     ---
+// --- ================================== ---
 
+const runTranscription = async (item: FileQueueItem): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', item.file); 
+
+    const response = await fetch('http://127.0.0.1:8000/transcribe', {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error del servidor en transcripción');
+    }
+
+    const data = await response.json();
+    return data.transcription ?? "";
+};
+
+const runGeneralSummary = async (transcription: string): Promise<string> => {
+    const body = JSON.stringify({
+        transcription: transcription 
+    });
+
+    const response = await fetch('http://127.0.0.1:8000/summarize-general', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error del servidor en resumen general');
+    }
+
+    const data = await response.json();
+    return data.summary ?? "";
+};
+
+const runBusinessSummary = async (transcription: string, instructions: string[]): Promise<string> => {
+    const body = JSON.stringify({
+        transcription: transcription,
+        instructions: instructions 
+    });
+
+    const response = await fetch('http://127.0.0.1:8000/summarize-business', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error del servidor en resumen de negocio');
+    }
+
+    const data = await response.json();
+    return data.summary ?? "";
+};
+
+
+export default App;
