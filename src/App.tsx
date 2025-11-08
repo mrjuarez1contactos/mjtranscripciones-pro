@@ -483,7 +483,7 @@ const runTranscription = async (item: FileQueueItem): Promise<string> => {
     const formData = new FormData();
     formData.append('file', item.file); 
 
-    const response = await fetch('http://127.0.0.1:8000/transcribe', {
+    const response = await fetch('https://mjtranscripciones.onrender.com/transcribe', {
         method: 'POST',
         body: formData,
     });
@@ -502,7 +502,7 @@ const runGeneralSummary = async (transcription: string): Promise<string> => {
         transcription: transcription 
     });
 
-    const response = await fetch('http://127.0.0.1:8000/summarize-general', {
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
@@ -523,7 +523,7 @@ const runBusinessSummary = async (transcription: string, instructions: string[])
         instructions: instructions 
     });
 
-    const response = await fetch('http://127.0.0.1:8000/summarize-business', {
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
