@@ -14,7 +14,10 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 app = FastAPI()
 
 # --- Configuración de Seguridad (CORS) ---
-origins = ["*"] # Esto significa "permitir todas las conexiones"
+origins = [
+    "https://mj-transcripciones.vercel.app", # Tu app en Vercel
+    "http://localhost:5173", # Mantenemos esto por si pruebas en tu PC
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
