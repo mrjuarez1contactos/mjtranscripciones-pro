@@ -78,12 +78,9 @@ const App: React.FC = () => {
     const processSingleFile = async (itemId: string) => {
         const item = fileQueue.find(i => i.id === itemId);
 
-        // --- ================================== ---
-        // ---       ¡ESTA ES LA CORRECCIÓN!      ---
-        // --- ================================== ---
-        // Ahora permitimos procesar si está 'pending' O 'error'
+        // Permitimos procesar si está 'pending' O 'error'
         if (!item || (item.status !== 'pending' && item.status !== 'error')) {
-            return; // No hacer nada si ya está completado o en proceso
+            return; 
         }
 
         setStatus(`Procesando: ${item.file.name}...`);
@@ -131,7 +128,6 @@ const App: React.FC = () => {
 
         for (const item of pendingFiles) {
             await processSingleFile(item.id);
-            // Mantenemos el retardo de 3s que funcionó para la mayoría
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
@@ -345,7 +341,6 @@ ${item.businessSummary}
                                 >
                                     {isLoading ? 'Procesando...' : `Procesar Todos (${fileQueue.filter(f => f.status === 'pending').length})`}
                                 </button>
-                                {/* Botón de Reintentar Errores Eliminado */}
                             </div>
                         </div>
                         <div style={styles.queueContainer}>
@@ -359,7 +354,6 @@ ${item.businessSummary}
                                         <div>
                                             <button 
                                                 onClick={() => processSingleFile(item.id)}
-                                                // Habilitado si está 'pending' O 'error'
                                                 disabled={isLoading || item.status === 'processing' || item.status === 'completed'}
                                                 style={{...styles.button, ...styles.buttonSmall, ...((isLoading || item.status === 'processing' || item.status === 'completed') ? styles.buttonDisabled : {})}}
                                             >
@@ -383,21 +377,14 @@ ${item.businessSummary}
                                     </div>
                                     
                                     {/* --- ================================== --- */}
-                                    {/* ---   MENSAJES DE ERROR MÁS LIMPIOS    --- */}
+                                    {/* ---  MENSAJES DE ERROR PARA DEPURACIÓN --- */}
                                     {/* --- ================================== --- */}
                                     {item.status === 'error' && item.errorMessage && (
                                         <div style={{...styles.queueItem, borderTop: '1px dashed #fde7e7'}}>
-                                            {(item.errorMessage.includes('PROHIBITED_CONTENT') || item.errorMessage.includes('blocked')) ? (
-                                                // Mensaje para Error Permanente (Bloqueo)
-                                                <span style={styles.errorText}>
-                                                    <strong>Contenido Prohibido:</strong> Google ha bloqueado este audio. Elimine este archivo o transcriba manualmente.
-                                                </span>
-                                            ) : (
-                                                // Mensaje para Error Temporal (429, Failed to Fetch, o cualquier otro)
-                                                <span style={styles.errorText}>
-                                                    <strong>Servidor Ocupado:</strong> Intente de nuevo en 1 minuto con el botón "Procesar".
-                                                </span>
-                                            )}
+                                            {/* ¡Volvemos a mostrar el error técnico real! */}
+                                            <span style={styles.errorText}>
+                                                <strong>Error:</strong> {item.errorMessage}
+                                            </span>
                                         </div>
                                     )}
                                 </div>
