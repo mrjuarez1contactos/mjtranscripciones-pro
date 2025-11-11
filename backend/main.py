@@ -9,8 +9,16 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # --- Configuración ---
-load_dotenv() 
+# --- ¡ESTA ES LA CORRECCIÓN! ---
+# Render automáticamente setea una variable llamada "RENDER" a "true".
+# Solo cargaremos el .env si NO estamos en Render (es decir, en tu PC local).
+if os.getenv("RENDER") != "true":
+    load_dotenv() # Carga el .env solo en tu PC
+
+# Ahora, en Render, esto SÍ leerá la clave que pusiste en el panel "Environment".
+# En tu PC, leerá la clave de tu .env local.
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 app = FastAPI()
 
 # --- Configuración de Seguridad (CORS) ---
