@@ -114,22 +114,11 @@ const App: React.FC = () => {
                 updateFileInQueue(itemId, { transcription: transcription, displayName: fileName });
                 setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
 
-                // ¡Llamadas a endpoints obsoletos! Las quitamos.
-                // generalSummary = await runGeneralSummary(transcription);
-                // updateFileInQueue(itemId, { generalSummary: generalSummary });
-                // businessSummary = await runBusinessSummary(transcription, globalInstructions);
-                
-                // --- ARREGLO TEMPORAL: ---
-                // El backend /transcribe AHORA debe hacer todo, o debemos crear nuevos endpoints
-                // Por ahora, para arreglar el flujo de Drive, dejaremos esto así.
-                // ¡ERROR! El código del backend que te di YA NO TIENE /summarize-general
-                // ¡TODO el procesamiento debe ir a /transcribe-from-drive o /transcribe!
-                
-                // --- CORRECCIÓN DE LÓGICA ---
-                // El flujo local también debe hacer los resúmenes
-                generalSummary = await runGeneralSummary_LEGACY(transcription); // Usamos una función temporal
+                // --- ¡ARREGLO DE ERROR 404! ---
+                // Volvemos a llamar a los endpoints correctos
+                generalSummary = await runGeneralSummary_LEGACY(transcription); 
                 updateFileInQueue(itemId, { generalSummary: generalSummary });
-                businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); // Usamos una función temporal
+                businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); 
 
 
             } else if (item.source === 'drive' && item.driveFileId) {
@@ -675,15 +664,17 @@ const runTranscriptionFromDrive = async (driveFileId: string, instructions: stri
     };
 };
 
-// ¡Estas funciones ahora SÓLO las usa el flujo "local"!
-// Las re-conectamos a los endpoints obsoletos (que ahora están vacíos, esto fallará)
-// ¡Debemos arreglar esto!
+// --- ================================== ---
+// ---     ¡FUNCIONES LEGACY CORREGIDAS!    ---
+// --- ================================== ---
+// Estas funciones SÍ son necesarias para el flujo "Subir desde PC"
 const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> => {
     const body = JSON.stringify({
         transcription: transcription 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', { // Re-apuntado al endpoint correcto
+    // Apunta al endpoint correcto que SÍ existe en main.py
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-general', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,
@@ -704,7 +695,8 @@ const runBusinessSummary_LEGACY = async (transcription: string, instructions: st
         instructions: instructions 
     });
 
-    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business', { // Re-apuntado al endpoint correcto
+    // Apunta al endpoint correcto que SÍ existe en main.py
+    const response = await fetch('https://mjtranscripciones.onrender.com/summarize-business', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body,

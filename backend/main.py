@@ -197,7 +197,6 @@ async def transcribe_from_drive(request: DriveRequest):
 
         # 6. Resumen de Negocio (Gemini Pro)
         print("Generando Resumen de Negocio...")
-        # ¡Ahora sí usamos las instrucciones permanentes!
         permanent_instructions_text = ""
         if request.instructions:
             instructions_joined = ". ".join(request.instructions)
@@ -234,7 +233,6 @@ async def transcribe_from_drive(request: DriveRequest):
         ).execute()
 
         print(f"Proceso completado para: {new_name}")
-        # Devolvemos los 4 datos al frontend
         return {
             "fileName": new_name,
             "transcription": transcription,
@@ -246,21 +244,49 @@ async def transcribe_from_drive(request: DriveRequest):
         print(f"Error en /transcribe-from-drive: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- (Las otras funciones de resumen ya no las usaremos desde el frontend, ---
-# --- pero las dejamos por si las necesitamos en el futuro) ---
-
+# --- ================================== ---
+# --- ENDPOINTS OBSOLETOS (PERO NECESARIOS) ---
+# --- ================================== ---
+# Estos son para el flujo de "Subir desde PC" (local)
 @app.post("/summarize-general")
 async def summarize_general(request: GeneralSummaryRequest):
-    # Esta función ahora está obsoleta, la lógica se movió a /transcribe-from-drive
-    print("ADVERTENCIA: Se llamó al endpoint obsoleto /summarize-general")
-    raise HTTPException(status_code=404, detail="Endpoint obsoleto. Usar /transcribe-from-drive.")
-
+    print("Llamada a /summarize-general (flujo local)")
+    try:
+        prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso...
+        Transcripción:
+        ---
+        {request.transcription}
+        ---
+        """
+        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
+        response = await model.generate_content_async(prompt)
+        return {"summary": response.text}
+    except Exception as e:
+        print(f"Error en /summarize-general: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/summarize-business")
 async def summarize_business(request: BusinessSummaryRequest):
-    # Esta función ahora está obsoleta, la lógica se movió a /transcribe-from-drive
-    print("ADVERTENCIA: Se llamó al endpoint obsoleto /summarize-business")
-    raise HTTPException(status_code=404, detail="Endpoint obsoleto. Usar /transcribe-from-drive.")
+    print("Llamada a /summarize-business (flujo local)")
+    try:
+        permanent_instructions_text = ""
+        if request.instructions:
+            instructions_joined = ". ".join(request.instructions)
+            permanent_instructions_text = f"Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: {instructions_joined}"
+
+        prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen de negocio claro y conciso...
+        {permanent_instructions_text}
+        Transcripción:
+        ---
+        {request.transcription}
+        ---
+        """
+        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
+        response = await model.generate_content_async(prompt)
+        return {"summary": response.text}
+    except Exception as e:
+        print(f"Error en /summarize-business: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
