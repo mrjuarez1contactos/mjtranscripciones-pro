@@ -23,7 +23,12 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # --- Configuración de Google Drive ---
 SERVICE_ACCOUNT_JSON_STRING = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+
+# --- ================================== ---
+# ---       ¡CAMBIO DE PERMISO AQUÍ!       ---
+# --- ================================== ---
+# Cambiamos 'drive.readonly' a 'drive' para tener permisos de escritura (renombrar)
+SCOPES = ['https://www.googleapis.com/auth/drive'] 
 
 creds = None
 drive_service = None
@@ -55,10 +60,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- ================================== ---
-# ---       ¡BLOQUE CORREGIDO!           ---
-# --- ================================== ---
-# (Quité las comillas extra " al final de cada línea)
+# --- Lista de Seguridad Corregida ---
 safety_settings = [
     {"category": genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
     {"category": genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE},
@@ -85,26 +87,17 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
+    # (Esta función no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
-
     try:
         audio_part = {
             "mime_type": file.content_type,
             "data": await file.read()
         }
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash", 
-            safety_settings=safety_settings
-        )
-        
-        response = await model.generate_content_async(
-            ["Transcribe this audio recording.", audio_part]
-        )
-
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
+        response = await model.generate_content_async(["Transcribe this audio recording.", audio_part])
         return {"transcription": response.text}
-
     except Exception as e:
         print(f"Error en /transcribe: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
@@ -112,22 +105,42 @@ async def transcribe_audio(file: UploadFile = File(...)):
         if file:
             await file.close()
 
+# --- ================================== ---
+# ---    ENDPOINT ACTUALIZADO CON RENOMBRADO   ---
+# --- ================================== ---
 @app.post("/transcribe-from-drive")
 async def transcribe_from_drive(request: DriveRequest):
     if not drive_service:
         raise HTTPException(status_code=500, detail="Servicio de Google Drive no configurado en el backend.")
-    
     if not request.drive_file_id:
         raise HTTPException(status_code=400, detail="No se proporcionó ID de Google Drive.")
 
     try:
         file_id = request.drive_file_id
         
+        # 1. Obtener metadatos (nombre y tipo)
         file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name').execute()
         mime_type = file_metadata.get('mimeType')
-        file_name = file_metadata.get('name')
-        print(f"Procesando archivo desde Drive: {file_name} ({mime_type})")
+        original_name = file_metadata.get('name')
+        
+        # 2. ¡NUEVA LÓGICA DE RENOMBRADO!
+        new_name = original_name
+        if original_name.startswith("Grabacion de llamada "):
+            new_name = original_name.replace("Grabacion de llamada ", "", 1) # Quita solo la primera instancia
+            print(f"Renombrando: '{original_name}' -> '{new_name}'")
+            try:
+                # Ejecutar el cambio de nombre en Google Drive
+                drive_service.files().update(
+                    fileId=file_id,
+                    body={'name': new_name}
+                ).execute()
+            except Exception as e:
+                print(f"Error al renombrar, continuando con el nombre original. Error: {e}")
+                new_name = original_name # Si falla, revierte al nombre original
+        
+        print(f"Procesando archivo desde Drive: {new_name} ({mime_type})")
 
+        # 3. Descargar el archivo de Google Drive en memoria
         drive_request = drive_service.files().get_media(fileId=file_id)
         file_bytes_io = io.BytesIO()
         downloader = MediaIoBaseDownload(file_bytes_io, drive_request)
@@ -136,49 +149,40 @@ async def transcribe_from_drive(request: DriveRequest):
         while done is False:
             status, done = downloader.next_chunk()
 
+        # 4. Preparar el archivo para Gemini
         audio_part = {
             "mime_type": mime_type,
             "data": file_bytes_io.getvalue()
         }
         
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash", 
-            safety_settings=safety_settings
-        )
-        
-        response = await model.generate_content_async(
-            ["Transcribe this audio recording.", audio_part]
-        )
+        # 5. Llamar a Gemini
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
+        response = await model.generate_content_async(["Transcribe this audio recording.", audio_part])
 
-        return {"transcription": response.text, "fileName": file_name}
+        # 6. Devolver la transcripción y el NOMBRE LIMPIO
+        return {"transcription": response.text, "fileName": new_name}
 
     except Exception as e:
         print(f"Error en /transcribe-from-drive: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- ================================== ---
+
 @app.post("/summarize-general")
 async def summarize_general(request: GeneralSummaryRequest):
+    # (El resto del archivo no cambia...)
     if not request.transcription:
         raise HTTPException(status_code=400, detail="No se proporcionó transcripción.")
-
     try:
         prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso. El resumen debe identificar los puntos clave, las acciones a seguir y el sentimiento general de la llamada, sin asumir ningún contexto de negocio específico.
-        
         Transcripción:
         ---
         {request.transcription}
         ---
         """
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro",
-            safety_settings=safety_settings
-        )
-        
+        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
         response = await model.generate_content_async(prompt)
-        
         return {"summary": response.text}
-
     except Exception as e:
         print(f"Error en /summarize-general: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -187,7 +191,6 @@ async def summarize_general(request: GeneralSummaryRequest):
 async def summarize_business(request: BusinessSummaryRequest):
     if not request.transcription:
         raise HTTPException(status_code=400, detail="No se proporcionó transcripción.")
-
     try:
         permanent_instructions_text = ""
         if request.instructions:
@@ -195,24 +198,15 @@ async def summarize_business(request: BusinessSummaryRequest):
             permanent_instructions_text = f"Para este resumen, aplica estas reglas e instrucciones permanentes en todo momento: {instructions_joined}"
 
         prompt = f"""Basado en la siguiente transcripción de una llamada, genera un resumen de negocio claro y conciso. El resumen debe identificar los puntos clave y las acciones a seguir, enfocándose en temas relevantes para un negocio de mariscos.
-        
         {permanent_instructions_text}
-
         Transcripción:
         ---
         {request.transcription}
         ---
         """
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro",
-            safety_settings=safety_settings
-        )
-        
+        model = genai.GenerativeModel(model_name="gemini-2.5-pro", safety_settings=safety_settings)
         response = await model.generate_content_async(prompt)
-        
         return {"summary": response.text}
-
     except Exception as e:
         print(f"Error en /summarize-business: {e}")
         raise HTTPException(status_code=500, detail=str(e))
