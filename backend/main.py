@@ -83,11 +83,10 @@ class BusinessSummaryRequest(BaseModel):
 
 class DriveRequest(BaseModel):
     drive_file_id: str
-    instructions: list[str] = Field(default_factory=list) # ¡Añadido para pasar instrucciones!
+    instructions: list[str] = Field(default_factory=list)
 
 # --- Función Helper para el contenido del TXT ---
 def generate_document_content(file_name: str, transcription: str, general_summary: str, business_summary: str) -> str:
-    # Genera la fecha actual en un formato legible
     fecha_procesamiento = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"""
 =========================================
@@ -133,7 +132,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
         }
         model = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
         response = await model.generate_content_async(["Transcribe this audio recording.", audio_part])
-        # Devolvemos también el nombre del archivo
         return {"transcription": response.text, "fileName": file.filename}
     except Exception as e:
         print(f"Error en /transcribe: {e}")
@@ -142,9 +140,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
         if file:
             await file.close()
 
-# --- ================================== ---
-# ---    ENDPOINT PRINCIPAL (ACTUALIZADO)   ---
-# --- ================================== ---
 @app.post("/transcribe-from-drive")
 async def transcribe_from_drive(request: DriveRequest):
     if not drive_service:
@@ -155,19 +150,16 @@ async def transcribe_from_drive(request: DriveRequest):
     try:
         file_id = request.drive_file_id
         
-        # 1. Obtener metadatos (nombre, tipo, y carpeta padre)
         file_metadata = drive_service.files().get(fileId=file_id, fields='mimeType, name, parents').execute()
         mime_type = file_metadata.get('mimeType')
         original_name = file_metadata.get('name')
-        original_parent = file_metadata.get('parents')[0] # Obtenemos la carpeta "Recientes"
+        original_parent = file_metadata.get('parents')[0] 
         
-        # 2. Renombrar
         new_name = original_name
         if original_name.startswith("Grabacion de llamada "):
             new_name = original_name.replace("Grabacion de llamada ", "", 1)
             print(f"Renombrando: '{original_name}' -> '{new_name}'")
         
-        # 3. Descargar el archivo
         print(f"Descargando: {new_name} ({mime_type})")
         drive_request = drive_service.files().get_media(fileId=file_id)
         file_bytes_io = io.BytesIO()
@@ -176,14 +168,12 @@ async def transcribe_from_drive(request: DriveRequest):
         while done is False:
             status, done = downloader.next_chunk()
 
-        # 4. Transcribir (Gemini Flash)
         print("Transcribiendo...")
         audio_part = { "mime_type": mime_type, "data": file_bytes_io.getvalue() }
         model_flash = genai.GenerativeModel(model_name="gemini-2.5-flash", safety_settings=safety_settings)
         response_flash = await model_flash.generate_content_async(["Transcribe this audio recording.", audio_part])
         transcription = response_flash.text
 
-        # 5. Resumen General (Gemini Pro)
         print("Generando Resumen General...")
         prompt_general = f"""Basado en la siguiente transcripción de una llamada, genera un resumen general claro y conciso...
         Transcripción:
@@ -195,7 +185,6 @@ async def transcribe_from_drive(request: DriveRequest):
         response_general = await model_pro.generate_content_async(prompt_general)
         general_summary = response_general.text
 
-        # 6. Resumen de Negocio (Gemini Pro)
         print("Generando Resumen de Negocio...")
         permanent_instructions_text = ""
         if request.instructions:
@@ -212,7 +201,6 @@ async def transcribe_from_drive(request: DriveRequest):
         response_business = await model_pro.generate_content_async(prompt_business)
         business_summary = response_business.text
 
-        # 7. Crear el archivo .txt
         print(f"Creando archivo .txt en carpeta {FOLDER_ID_TXT_DESTINATION}...")
         txt_content = generate_document_content(new_name, transcription, general_summary, business_summary)
         txt_filename = f"{new_name.split('.')[0]}.txt"
@@ -223,13 +211,12 @@ async def transcribe_from_drive(request: DriveRequest):
             media_body=txt_media
         ).execute()
 
-        # 8. Mover el .m4a
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
         drive_service.files().update(
             fileId=file_id,
             addParents=FOLDER_ID_M4A_DESTINATION,
             removeParents=original_parent,
-            body={'name': new_name} # Se asegura de que tenga el nombre correcto
+            body={'name': new_name} 
         ).execute()
 
         print(f"Proceso completado para: {new_name}")
@@ -244,10 +231,6 @@ async def transcribe_from_drive(request: DriveRequest):
         print(f"Error en /transcribe-from-drive: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- ================================== ---
-# --- ENDPOINTS OBSOLETOS (PERO NECESARIOS) ---
-# --- ================================== ---
-# Estos son para el flujo de "Subir desde PC" (local)
 @app.post("/summarize-general")
 async def summarize_general(request: GeneralSummaryRequest):
     print("Llamada a /summarize-general (flujo local)")
