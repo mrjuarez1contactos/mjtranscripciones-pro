@@ -9,10 +9,11 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # --- Importaciones de Google Drive (OAuth) ---
-from google.oauth2 import credentials # ¡Cambiado!
+from google.oauth2 import credentials 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaInMemoryUpload
 from datetime import datetime 
+from google.auth.transport.requests import Request # <-- ¡IMPORTACIÓN NECESARIA!
 # --- Fin de Importaciones ---
 
 
@@ -38,7 +39,6 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 creds = None
 drive_service = None
 
-# Verifica que todas las variables de entorno necesarias estén cargadas
 if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION, os.getenv("GEMINI_API_KEY")]):
     print("ADVERTENCIA: Faltan una o más variables de entorno de OAuth o de carpetas.")
 else:
@@ -53,8 +53,13 @@ else:
             scopes=SCOPES
         )
         
-        # (Opcional pero recomendado) Refrescar el token al inicio
-        creds.refresh(None) 
+        # --- ================================== ---
+        # ---       ¡ESTA ES LA CORRECCIÓN!      ---
+        # --- ================================== ---
+        # En lugar de creds.refresh(None), que es incorrecto:
+        # 1. Creamos un objeto de 'requests' (que importamos arriba)
+        # 2. Se lo pasamos a refresh()
+        creds.refresh(Request()) 
         
         drive_service = build('drive', 'v3', credentials=creds)
         print("Servicio de Google Drive y credenciales OAuth cargados exitosamente.")
@@ -134,7 +139,6 @@ def read_root():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    # (Este endpoint no cambia)
     if not file:
         raise HTTPException(status_code=400, detail="No se subió ningún archivo.")
     try:
@@ -162,12 +166,10 @@ async def transcribe_from_drive(request: DriveRequest):
     try:
         file_id = request.drive_file_id
         
-        # 1. Obtener metadatos (nombre, tipo, y carpeta padre)
-        # ¡Añadimos 'supportsAllDrives=True' para que funcione con carpetas compartidas!
         file_metadata = drive_service.files().get(
             fileId=file_id, 
             fields='mimeType, name, parents',
-            supportsAllDrives=True # ¡IMPORTANTE!
+            supportsAllDrives=True 
         ).execute()
         
         mime_type = file_metadata.get('mimeType')
@@ -238,7 +240,7 @@ async def transcribe_from_drive(request: DriveRequest):
         drive_service.files().create(
             body={'name': txt_filename, 'parents': [FOLDER_ID_TXT_DESTINATION]},
             media_body=txt_media,
-            supportsAllDrives=True # ¡IMPORTANTE!
+            supportsAllDrives=True 
         ).execute()
 
         print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
@@ -247,7 +249,7 @@ async def transcribe_from_drive(request: DriveRequest):
             addParents=FOLDER_ID_M4A_DESTINATION,
             removeParents=original_parent,
             body={'name': new_name},
-            supportsAllDrives=True # ¡IMPORTANTE!
+            supportsAllDrives=True 
         ).execute()
 
         print(f"Proceso completado para: {new_name}")
