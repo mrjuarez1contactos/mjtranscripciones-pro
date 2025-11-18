@@ -94,6 +94,7 @@ const App: React.FC = () => {
 
     // --- LÓGICA DE PROCESO (ACTUALIZADA) ---
 
+    // FUNCIÓN AUXILIAR CORREGIDA: ESTO ERA LO QUE FALTABA
     const updateFileInQueue = (itemId: string, updates: Partial<FileQueueItem>) => {
         setFileQueue(currentQueue => 
             currentQueue.map(item => 
@@ -117,7 +118,7 @@ const App: React.FC = () => {
         const item = itemToProcess; // Renombra para el resto de la función
 
         setStatus(`Procesando: ${item.displayName}...`);
-        updateItemStatus(itemId, 'processing', { errorMessage: '' });
+        updateFileInQueue(itemId, { status: 'processing', errorMessage: '' }); // CORREGIDO
 
         try {
             let transcription = '';
@@ -131,11 +132,11 @@ const App: React.FC = () => {
                 transcription = transData.transcription;
                 fileName = transData.fileName;
 
-                updateItemStatus(itemId, 'processing', { transcription, displayName: fileName });
+                updateFileInQueue(itemId, { transcription: transcription, displayName: fileName }); // CORREGIDO
                 setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
 
                 generalSummary = await runGeneralSummary_LEGACY(transcription); 
-                updateItemStatus(itemId, 'processing', { generalSummary });
+                updateFileInQueue(itemId, { generalSummary: generalSummary }); // CORREGIDO
                 
                 businessSummary = await runBusinessSummary_LEGACY(transcription, globalInstructions); 
 
@@ -152,11 +153,12 @@ const App: React.FC = () => {
                 throw new Error("Archivo inválido en la cola.");
             }
 
-            updateItemStatus(itemId, 'completed', {
+            updateFileInQueue(itemId, { // CORREGIDO
                 displayName: fileName,
                 transcription: transcription,
                 generalSummary: generalSummary,
-                businessSummary: businessSummary
+                businessSummary: businessSummary, 
+                status: 'completed' 
             });
             
             setStatus(`Completado: ${fileName}`);
@@ -164,7 +166,8 @@ const App: React.FC = () => {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Error desconocido";
             console.error(`Error procesando ${item.displayName}:`, error);
-            updateItemStatus(itemId, 'error', { 
+            updateFileInQueue(itemId, { // CORREGIDO
+                status: 'error', 
                 errorMessage: errorMessage 
             });
             setStatus(`Error en ${item.displayName}, revisa la cola.`);
@@ -172,18 +175,20 @@ const App: React.FC = () => {
     };
 
     // --- ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP) ---
+    // Esto arregla el problema de que "se paraba"
     const handleProcessAll = async () => {
-        const pendingFiles = fileQueue.filter(item => item.status === 'pending' || item.status === 'error');
+        // Ahora recogemos PENDIENTES y los que están en ERROR, para reintentar
+        const idsToProcess = fileQueue.filter(item => item.status === 'pending' || item.status === 'error');
 
-        if (pendingFiles.length === 0) {
+        if (idsToProcess.length === 0) {
             setStatus("No hay archivos pendientes para procesar.");
             return;
         }
         
         setIsLoading(true); 
-        setStatus(`Iniciando procesamiento por lotes de ${pendingFiles.length} archivos...`);
+        setStatus(`Iniciando procesamiento por lotes de ${idsToProcess.length} archivos...`);
 
-        for (const item of pendingFiles) {
+        for (const item of idsToProcess) {
             await processSingleFile(item.id);
             // Pequeña pausa para evitar rate limiting (opcional pero recomendado)
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -274,7 +279,7 @@ const App: React.FC = () => {
             }
         } catch (error) {
             console.error('Error al obtener anotaciones:', error);
-            setStatus(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+            setStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsLoading(false);
         }
