@@ -27,18 +27,6 @@ interface Anotacion {
 }
 // --- ================================== ---
 
-// Helper para obtener el estilo del estado (MOVÍ ESTA FUNCIÓN AQUÍ)
-const getStatusStyle = (styles: { [key: string]: React.CSSProperties }, status: FileStatus): React.CSSProperties => {
-    switch (status) {
-        case 'processing': return styles.statusProcessing;
-        case 'completed': return styles.statusCompleted;
-        case 'error': return styles.statusError;
-        case 'pending':
-        default:
-            return styles.statusPending;
-    }
-};
-
 const App: React.FC = () => {
     
     const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
@@ -187,7 +175,7 @@ const App: React.FC = () => {
         }
     };
 
-    // ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP)
+    // --- ESTA ES LA VERSIÓN CORREGIDA DE 'handleProcessAll' (LA DE TU ZIP) ---
     // Esto arregla el problema de que "se paraba"
     const handleProcessAll = async () => {
         // Ahora recogemos PENDIENTES y los que están en ERROR, para reintentar
@@ -223,9 +211,6 @@ const App: React.FC = () => {
         return [...new Set(ids)]; // Devuelve solo IDs únicos
     };
 
-    // --- ================================== ---
-    // ---     FUNCIÓN DE DRIVE CORREGIDA!     ---
-    // --- ================================== ---
     const handleProcessDriveLinks = () => { // Ya no es async
         const fileIds = parseDriveLinks(driveLinks);
         if (fileIds.length === 0) {
@@ -283,10 +268,10 @@ const App: React.FC = () => {
 
             if(Array.isArray(data)) {
                 setAnotaciones(data);
-                setStatus(`${data.length} resúmenes cargados.`);
+                setStatus(`Se cargaron ${data.length} anotaciones.`);
                 setShowAnotaciones(true); // Mostrar la vista
             } else {
-                throw new Error("Formato de datos incorrecto.");
+                throw new Error("La respuesta de la API no fue un array.");
             }
         } catch (error) {
             console.error('Error al obtener anotaciones:', error);
@@ -296,6 +281,7 @@ const App: React.FC = () => {
         }
     };
 
+    // CORREGIDO: Añadí la anotación de tipo Anotacion para eliminar TS7006
     const getFilteredAndSortedAnotaciones = () => {
         return anotaciones
             .filter((a: Anotacion) => 
@@ -507,7 +493,7 @@ ${item.businessSummary}
                                                 <div style={{flex: 1}}>
                                                     <span style={styles.queueItemName}>{item.displayName}</span>
                                                     <br/>
-                                                    <span style={getStatusStyle(styles, item.status)}> {/* CORREGIDO: Usando getStatusStyle(styles, status) */}
+                                                    <span style={getStatusStyle(styles, item.status)}>
                                                         {item.status === 'error' ? 'Error' : item.status === 'completed' ? 'Completado' : item.status === 'processing' ? 'Procesando...' : 'Pendiente'}
                                                     </span>
                                                 </div>
