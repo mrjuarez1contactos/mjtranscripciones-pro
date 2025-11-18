@@ -11,6 +11,7 @@ interface FileQueueItem {
   driveFileId: string | null; 
   source: FileSource;
   displayName: string; 
+  
   status: FileStatus;
   transcription: string;
   generalSummary: string;
