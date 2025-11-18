@@ -655,7 +655,7 @@ ${item.businessSummary}
                           	 	 	 	 	 	 	 	  style={{...styles.button, ...styles.buttonSmall, margin: 0, ...((isLoading || item.status === 'processing' || item.status === 'completed') ? styles.buttonDisabled : {})}}
                           	 	 	 	 	 	 	  >
                           	 	 	 	 	 	 	 	  {item.status === 'error' ? 'Reintentar' : 'Procesar'}
-                          	 	 	 	 	 	 	  </button>
+                          	 	   	 	 	 	  </button>
                       	 	 	 	 	 	 	 	  <button 
                           	 	 	 	 	 	 	 	  onClick={() => handleGenerateDocument(item)}
                           	 	 	 	 	 	 	 	  disabled={item.status !== 'completed'}
@@ -795,12 +795,12 @@ ${item.businessSummary}
       	       	 	 	 	 	 	 	 	 	  saveGlobalInstructions(updated);
       	       	 	 	 	 	 	 	 	  }}
       	       	 	 	 	 	 	 	 	  style={styles.deleteButton}
-section       	 	 	 	 	  >
+      	       	 	 	 	 	 	  >
       	       	 	 	 	 	 	 	  Eliminar
       	       	 	 	 	 	 	  </button>
       	       	 	 	 	 	  </div>
-      	       	 	 	 	 	  ))}
-iOS       	 	 	 	  </div>
+  s     	 	 	 	 	  ))}
+      	       	 	 	 	  </div>
       	       	 	 	 	  <button onClick={() => setIsModalOpen(false)} style={{...styles.button, marginTop: '1rem', margin: 0}}>Cerrar</button>
       	       	 	 	  </div>
       	       	 	  </div>
@@ -849,7 +849,7 @@ const runTranscriptionFromDrive = async (driveFileId: string, instructions: stri
   	 if (!response.ok) {
     	  const errorData = await response.json();
     	  throw new Error(errorData.detail || 'Error del servidor en transcripción de Drive');
-JSON }
+ 	 }
 
   	 const data = await response.json();
   	 return { 
@@ -864,7 +864,7 @@ JSON }
 // --- ================================== ---
 // Estas funciones SÍ son necesarias para el flujo "Subir desde PC"
 const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> => {
-  	 const body = JSON.stringify({
+ 	 const body = JSON.stringify({
     	  transcription: transcription 
   	 });
 
@@ -878,7 +878,7 @@ const runGeneralSummary_LEGACY = async (transcription: string): Promise<string> 
   	 if (!response.ok) {
   	 	  const errorData = await response.json();
     	  throw new Error(errorData.detail || 'Error del servidor en resumen general');
-section }
+ 	 }
 
   	 const data = await response.json();
   	 return data.summary ?? "";
