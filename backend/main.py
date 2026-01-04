@@ -89,7 +89,10 @@ class BusinessSummaryRequest(BaseModel):
 
 class DriveRequest(BaseModel):
     drive_file_id: str
-    instructions: list[str] = Field(default_factory=list) 
+    instructions: list[str] = Field(default_factory=list)
+    folder_id_m4a: str
+    folder_id_txt: str
+    gemini_api_key: str 
 
 # --- Función Helper para el contenido del TXT ---
 def generate_document_content(file_name: str, transcription: str, general_summary: str, business_summary: str) -> str:
@@ -148,10 +151,18 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
 @app.post("/transcribe-from-drive")
 async def transcribe_from_drive(request: DriveRequest):
+    # Verificación de IDs y API Key
+    if not all([request.folder_id_m4a, request.folder_id_txt, request.gemini_api_key]):
+        raise HTTPException(
+            status_code=400, 
+            detail="Faltan IDs de configuración. Asegúrate de enviar folder_id_m4a, folder_id_txt y gemini_api_key."
+        )
+
+    # Configurar genai con la API Key del usuario
+    genai.configure(api_key=request.gemini_api_key)
+
     if not drive_service:
         raise HTTPException(status_code=500, detail="Servicio de Google Drive no configurado. Revisa las variables de entorno.")
-    if not all([FOLDER_ID_M4A_DESTINATION, FOLDER_ID_TXT_DESTINATION]):
-        raise HTTPException(status_code=500, detail="IDs de carpetas de destino no configurados en el backend.")
 
     try:
         file_id = request.drive_file_id
@@ -225,21 +236,21 @@ async def transcribe_from_drive(request: DriveRequest):
         response_business = await model_pro.generate_content_async(prompt_business)
         business_summary = response_business.text
 
-        print(f"Creando archivo .txt en carpeta {FOLDER_ID_TXT_DESTINATION}...")
+        print(f"Creando archivo .txt en carpeta {request.folder_id_txt}...")
         txt_content = generate_document_content(new_name, transcription, general_summary, business_summary)
         txt_filename = f"{new_name.split('.')[0]}.txt"
         
         txt_media = MediaInMemoryUpload(txt_content.encode('utf-8'), mimetype='text/plain')
         drive_service.files().create(
-            body={'name': txt_filename, 'parents': [FOLDER_ID_TXT_DESTINATION]},
+            body={'name': txt_filename, 'parents': [request.folder_id_txt]},
             media_body=txt_media,
             supportsAllDrives=True 
         ).execute()
 
-        print(f"Moviendo .m4a a carpeta {FOLDER_ID_M4A_DESTINATION}...")
+        print(f"Moviendo .m4a a carpeta {request.folder_id_m4a}...")
         drive_service.files().update(
             fileId=file_id,
-            addParents=FOLDER_ID_M4A_DESTINATION,
+            addParents=request.folder_id_m4a,
             removeParents=original_parent,
             body={'name': new_name},
             supportsAllDrives=True 

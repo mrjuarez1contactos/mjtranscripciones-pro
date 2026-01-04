@@ -31,10 +31,16 @@ const App: React.FC = () => {
     const [driveLinks, setDriveLinks] = useState('');
     // --- ============================ ---
 
-    // State for permanent instructions
     const [globalInstructions, setGlobalInstructions] = useState<string[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newInstruction, setNewInstruction] = useState('');
+    
+    // --- NUEVOS ESTADOS DE CONFIGURACIÓN ---
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [geminiApiKey, setGeminiApiKey] = useState('');
+    const [folderIdM4a, setFolderIdM4a] = useState('');
+    const [folderIdTxt, setFolderIdTxt] = useState('');
+
     const importFileInputRef = useRef<HTMLInputElement>(null);
     
     useEffect(() => {
@@ -43,10 +49,28 @@ const App: React.FC = () => {
             if (storedInstructions) {
                 setGlobalInstructions(JSON.parse(storedInstructions));
             }
+            
+            // Cargar configuración desde localStorage
+            const storedApiKey = localStorage.getItem('geminiApiKey');
+            const storedM4a = localStorage.getItem('folderIdM4a');
+            const storedTxt = localStorage.getItem('folderIdTxt');
+            
+            if (storedApiKey) setGeminiApiKey(storedApiKey);
+            if (storedM4a) setFolderIdM4a(storedM4a);
+            if (storedTxt) setFolderIdTxt(storedTxt);
+
         } catch (error) {
-            console.error("Failed to parse global instructions from localStorage", error);
+            console.error("Failed to parse data from localStorage", error);
         }
     }, []);
+
+    const saveSettings = () => {
+        localStorage.setItem('geminiApiKey', geminiApiKey);
+        localStorage.setItem('folderIdM4a', folderIdM4a);
+        localStorage.setItem('folderIdTxt', folderIdTxt);
+        setShowSettingsModal(false);
+        setStatus("Configuración guardada correctamente.");
+    };
 
     const saveGlobalInstructions = (instructions: string[]) => {
         setGlobalInstructions(instructions);
@@ -121,7 +145,13 @@ const App: React.FC = () => {
             } else if (item.source === 'drive' && item.driveFileId) {
                 // Flujo de Drive: 1 llamada que hace todo
                 setStatus(`Procesando (Drive): ${item.displayName}...`);
-                const data = await runTranscriptionFromDrive(item.driveFileId, globalInstructions);
+                const data = await runTranscriptionFromDrive(
+                    item.driveFileId, 
+                    globalInstructions,
+                    geminiApiKey,
+                    folderIdM4a,
+                    folderIdTxt
+                );
                 transcription = data.transcription;
                 fileName = data.fileName;
                 generalSummary = data.generalSummary;
@@ -397,7 +427,16 @@ ${item.businessSummary}
             <div style={{maxWidth: '800px', margin: '0 auto'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                     <h1 style={{...styles.header, marginBottom: 0, textAlign: 'left'}}>Transcriptor y Resumidor</h1>
-                    <button style={styles.button} onClick={() => setIsModalOpen(true)}>Mejoras Permanentes</button>
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                        <button 
+                            style={{...styles.button, backgroundColor: '#606770', padding: '10px 15px'}} 
+                            onClick={() => setShowSettingsModal(true)}
+                            title="Ajustes de Configuración"
+                        >
+                            ⚙️
+                        </button>
+                        <button style={styles.button} onClick={() => setIsModalOpen(true)}>Mejoras Permanentes</button>
+                    </div>
                 </div>
 
                 <div style={styles.card}>
@@ -601,6 +640,60 @@ ${item.businessSummary}
                         </div>
                     </div>
                 )}
+
+                {showSettingsModal && (
+                    <div style={styles.modalOverlay} onClick={() => setShowSettingsModal(false)}>
+                        <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                            <h2>⚙️ Ajustes de Configuración</h2>
+                            <p>Configura tus credenciales y destinos para el procesamiento genérico.</p>
+                            
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <label style={{display: 'block', marginBottom: '0.5rem', fontWeight: 'bold'}}>Gemini API Key</label>
+                                <input 
+                                    type="password"
+                                    value={geminiApiKey}
+                                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                                    placeholder="Introduce tu API Key de Gemini"
+                                    style={{...styles.modalInput, width: '100%'}}
+                                />
+                            </div>
+
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <label style={{display: 'block', marginBottom: '0.5rem', fontWeight: 'bold'}}>ID Carpeta Destino M4A</label>
+                                <input 
+                                    type="text"
+                                    value={folderIdM4a}
+                                    onChange={(e) => setFolderIdM4a(e.target.value)}
+                                    placeholder="ID de la carpeta para audios (.m4a)"
+                                    style={{...styles.modalInput, width: '100%'}}
+                                />
+                            </div>
+
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <label style={{display: 'block', marginBottom: '0.5rem', fontWeight: 'bold'}}>ID Carpeta Destino TXT</label>
+                                <input 
+                                    type="text"
+                                    value={folderIdTxt}
+                                    onChange={(e) => setFolderIdTxt(e.target.value)}
+                                    placeholder="ID de la carpeta para transcripciones (.txt)"
+                                    style={{...styles.modalInput, width: '100%'}}
+                                />
+                            </div>
+
+                            <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem'}}>
+                                <button onClick={() => setShowSettingsModal(false)} style={{...styles.button, backgroundColor: '#606770'}}>
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={saveSettings} 
+                                    style={{...styles.button, ...styles.buttonGreen}}
+                                >
+                                    Guardar Configuración
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -630,10 +723,24 @@ const runTranscription = async (file: File): Promise<{transcription: string, fil
 };
 
 // Procesa un archivo de Drive
-const runTranscriptionFromDrive = async (driveFileId: string, instructions: string[]): Promise<{transcription: string, fileName: string, generalSummary: string, businessSummary: string}> => {
+const runTranscriptionFromDrive = async (
+    driveFileId: string, 
+    instructions: string[],
+    geminiApiKey: string,
+    folderIdM4a: string,
+    folderIdTxt: string
+): Promise<{transcription: string, fileName: string, generalSummary: string, businessSummary: string}> => {
+    
+    if (!geminiApiKey || !folderIdM4a || !folderIdTxt) {
+        throw new Error("Faltan datos de configuración (API Key o IDs de Carpetas). Por favor, ve a Ajustes ⚙️.");
+    }
+
     const body = JSON.stringify({
         drive_file_id: driveFileId,
-        instructions: instructions // Pasamos las instrucciones permanentes
+        instructions: instructions,
+        gemini_api_key: geminiApiKey,
+        folder_id_m4a: folderIdM4a,
+        folder_id_txt: folderIdTxt
     });
 
     const response = await fetch('https://mjtranscripciones.onrender.com/transcribe-from-drive', {
