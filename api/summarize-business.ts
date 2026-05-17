@@ -47,6 +47,7 @@ Transcripción:
 ${transcription}
 ---`;
 
+    const result = await model.generateContent(prompt);
     const businessSummary = result.response.text();
 
     if (transcriptionId) {
