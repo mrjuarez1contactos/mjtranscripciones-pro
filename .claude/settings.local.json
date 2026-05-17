@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "PowerShell(cd \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\mj-transcripciones\"; $env:NODE_OPTIONS=\"--max-old-space-size=512\"; npx tsc --noEmit 2>&1 | Select-Object -Last 302)"
+    ]
+  }
+}
