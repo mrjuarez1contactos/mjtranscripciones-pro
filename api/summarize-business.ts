@@ -15,7 +15,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ detail: 'Token de autenticación requerido.' });
 
-  const { transcription, instructions } = req.body as { transcription: string; instructions: string[] };
+  const { transcription, instructions, transcriptionId, generalSummary } = req.body as {
+    transcription: string;
+    instructions: string[];
+    transcriptionId?: string;
+    generalSummary?: string;
+  };
   if (!transcription) return res.status(400).json({ detail: 'transcription es requerido.' });
 
   const supabaseAdmin = createClient(
@@ -42,8 +47,22 @@ Transcripción:
 ${transcription}
 ---`;
 
-    const result = await model.generateContent(prompt);
-    return res.status(200).json({ summary: result.response.text() });
+    const businessSummary = result.response.text();
+
+    if (transcriptionId) {
+      const { error: dbError } = await supabaseAdmin
+        .from('transcriptions')
+        .update({
+          general_summary: generalSummary ?? '',
+          business_summary: businessSummary,
+        })
+        .eq('id', transcriptionId);
+      if (dbError) {
+        console.error('Error actualizando resúmenes en transcriptions:', dbError.message);
+      }
+    }
+
+    return res.status(200).json({ summary: businessSummary });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
     console.error('Error en /api/summarize-business:', error);

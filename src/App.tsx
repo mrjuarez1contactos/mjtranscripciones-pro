@@ -183,16 +183,8 @@ const App: React.FC = () => {
 
         generalSummary = await runGeneralSummary(transcription, token);
         updateFileInQueue(itemId, { generalSummary });
-        businessSummary = await runBusinessSummary(transcription, globalInstructions, token);
-
-        // Actualizar el registro con los resúmenes generados
-        if (transcriptionId) {
-          const { error: updateError } = await supabase
-            .from('transcriptions')
-            .update({ general_summary: generalSummary, business_summary: businessSummary })
-            .eq('id', transcriptionId);
-          if (updateError) console.error('Error actualizando resúmenes en Supabase:', updateError.message);
-        }
+        // Pasa transcriptionId y generalSummary para que el endpoint guarde ambos resúmenes en DB
+        businessSummary = await runBusinessSummary(transcription, globalInstructions, token, transcriptionId, generalSummary);
 
       } else if (item.source === 'drive' && item.driveFileId) {
         // Flujo de Drive: llama al backend de Render (maneja Drive OAuth)
@@ -863,10 +855,13 @@ const runGeneralSummary = async (transcription: string, token: string): Promise<
 };
 
 // Llama a /api/summarize-business con autenticación
+// Pasa transcriptionId + generalSummary para que el servidor haga el UPDATE en Supabase
 const runBusinessSummary = async (
   transcription: string,
   instructions: string[],
-  token: string
+  token: string,
+  transcriptionId?: string | null,
+  generalSummary?: string
 ): Promise<string> => {
   const response = await fetch('/api/summarize-business', {
     method: 'POST',
@@ -874,7 +869,7 @@ const runBusinessSummary = async (
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ transcription, instructions }),
+    body: JSON.stringify({ transcription, instructions, transcriptionId, generalSummary }),
   });
 
   if (!response.ok) {
