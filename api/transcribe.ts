@@ -61,9 +61,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { inlineData: { mimeType: effectiveMimeType, data: base64Data } },
     ]);
 
+    const transcriptionText = result.response.text();
+
+    const { data: saved, error: dbError } = await supabaseAdmin
+      .from('transcriptions')
+      .insert({
+        user_id: user.id,
+        file_name: file_name,
+        transcription: transcriptionText,
+      })
+      .select('id')
+      .single();
+
+    if (dbError) {
+      console.error('Error al guardar en transcriptions:', dbError.message, dbError.details);
+    }
+
     return res.status(200).json({
-      transcription: result.response.text(),
+      transcription: transcriptionText,
       fileName: file_name,
+      transcriptionId: saved?.id ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

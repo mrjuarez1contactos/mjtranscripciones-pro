@@ -176,6 +176,7 @@ const App: React.FC = () => {
         const transData = await runTranscription(item.file, user!.id, token);
         transcription = transData.transcription;
         fileName = transData.fileName;
+        const transcriptionId = transData.transcriptionId;
 
         updateFileInQueue(itemId, { transcription, displayName: fileName });
         setStatus(`Transcrito: ${fileName}. Generando resúmenes...`);
@@ -183,6 +184,15 @@ const App: React.FC = () => {
         generalSummary = await runGeneralSummary(transcription, token);
         updateFileInQueue(itemId, { generalSummary });
         businessSummary = await runBusinessSummary(transcription, globalInstructions, token);
+
+        // Actualizar el registro con los resúmenes generados
+        if (transcriptionId) {
+          const { error: updateError } = await supabase
+            .from('transcriptions')
+            .update({ general_summary: generalSummary, business_summary: businessSummary })
+            .eq('id', transcriptionId);
+          if (updateError) console.error('Error actualizando resúmenes en Supabase:', updateError.message);
+        }
 
       } else if (item.source === 'drive' && item.driveFileId) {
         // Flujo de Drive: llama al backend de Render (maneja Drive OAuth)
@@ -791,7 +801,7 @@ const runTranscription = async (
   file: File,
   userId: string,
   token: string
-): Promise<{ transcription: string; fileName: string }> => {
+): Promise<{ transcription: string; fileName: string; transcriptionId: string | null }> => {
   // 1. Subir a Supabase Storage en carpeta del usuario
   const storagePath = `${userId}/${Date.now()}_${file.name}`;
   const { error: uploadError } = await supabase.storage
@@ -821,7 +831,11 @@ const runTranscription = async (
     }
 
     const data = await response.json();
-    return { transcription: data.transcription ?? '', fileName: data.fileName ?? file.name };
+    return {
+      transcription: data.transcription ?? '',
+      fileName: data.fileName ?? file.name,
+      transcriptionId: data.transcriptionId ?? null,
+    };
   } finally {
     // 3. Eliminar el audio del Storage (ya fue procesado)
     await supabase.storage.from('audios').remove([storagePath]);
